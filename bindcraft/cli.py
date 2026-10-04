@@ -10,13 +10,14 @@ from bindcraft import OPERATOR_COMPILATION_CACHE, command_modules, package_modul
 from bindcraft.model_weights import missing_model_weights, model_weights
 
 COMMANDS = ('design', 'pause', 'resume', 'archive', 'unarchive', 'fetch-weights')
-COMMAND_MODULES = {'filter': 'campaign_filter'}
+COMMAND_MODULES = {'filter': 'campaign_filter', 'report': 'campaign_report'}
 CAMPAIGN_PRESETS = Path(__file__).parent.parent / 'settings'
 USAGE = '\n'.join(('usage: bindcraft design <settings.json> [--core NAME] [--modality NAME[,NAME]] [--humanize ...] [--metadata <metadata.json>] [--set KEY=VALUE]...',
                    '       bindcraft design --list-targets | --list-modalities | --list-properties | --list-core | --list-settings',
                    '       bindcraft score <design.cif> [--binder CHAINS] [--target CHAINS] [--hotspots SPANS]',
                    '       bindcraft rank <campaign folder> [--on METRIC] [--list]',
                    '       bindcraft filter <campaign folder> [--where METRIC>=VALUE]... [--filters FILE] [--list]',
+                   '       bindcraft report <campaign folder> [--top N] [--structures N]',
                    '       bindcraft pause|resume <campaign folder>',
                    '       bindcraft campaign_output [<campaign folder> ...]',
                    '       bindcraft archive|unarchive <campaign folder>',

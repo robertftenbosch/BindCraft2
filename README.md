@@ -218,6 +218,14 @@ results/pdl1/
 
 A stage folder appears when its first file is written. If no designs have been accepted yet, start with the earlier stages to see their progress and filter outcomes.
 
+To see a campaign whole, write its report:
+
+```bash
+bindcraft report results/pdl1
+```
+
+It prints its own conclusions to the terminal and writes `report.html` beside the tables: where the campaign loses its designs, which threshold does the rejecting and by how far every reading misses it, the stage trajectories stop at, how the optimisation ran, and the accepted designs with their structures. The page is one self-contained file with no plotting library behind it, so it can be written on a compute node and copied anywhere to read. Its 3D viewer is fetched from a CDN when the page is opened online; offline the structures are still named for opening in PyMOL or ChimeraX, and `--structures 0` leaves them out of the file.
+
 To rank by another measurement or explore different acceptance thresholds:
 
 ```bash
