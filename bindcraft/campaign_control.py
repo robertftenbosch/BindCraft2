@@ -68,13 +68,14 @@ def resume_settings_path(project_folder: str, record: dict) -> str:
     return written_path
 
 def resume_overrides(project_folder: str, record: dict) -> list[str]:
-    """Only what the recorded settings do not already say, so carrying on records the settings it started from rather than a second campaign.
+    """What carrying on has to say over the settings file, which is the folder above all.
 
-    A campaign resumes by default, and the folder is named in the settings unless it was moved since."""
+    The folder is always named. The record holds the folder the campaign *ran* in, which is not what
+    the settings file says whenever the folder was given on the command line: comparing against the
+    record and staying silent sends the resumed campaign to whatever folder the file names instead.
+    A campaign resumes by default, so that is only said when the settings refuse it."""
     settings = record.get('settings') or {}
-    recorded_folder = str(settings.get('project_folder') or '')
-    overrides = [] if recorded_folder and os.path.abspath(recorded_folder) == os.path.abspath(project_folder) else [f'project_folder={project_folder}']
-    return overrides + ([] if settings.get('resume', True) else ['resume=true'])
+    return [f'project_folder={project_folder}'] + ([] if settings.get('resume', True) else ['resume=true'])
 
 def pause_campaign(project_folder: str) -> int:
     if not os.path.isdir(project_folder):
