@@ -14,6 +14,10 @@ GETTING_STARTED = """BindCraft designs a binder from one settings file:
 
 Any setting of the file is overridden by naming it that way, and examples/README.md lists the
 campaigns that ship with the repository. Settings, losses and filters are in docs/source/reference.md.
+A running campaign is paused with "bindcraft pause results/my_run" and picked up again with
+"bindcraft resume results/my_run"; Ctrl+C asks for the same pause, and the trajectory being designed
+is finished and recorded first.
+
 Every other bindcraft command is reached the same way: rank, score, archive, fetch-weights.
 """
 
@@ -57,7 +61,7 @@ def designs_a_campaign(arguments: list[str]) -> bool:
     except ImportError:
         return False
     named = arguments[0] if arguments else ''
-    return named == 'design' or (bool(named) and named not in COMMANDS and named not in COMMAND_MODULES and named not in package_modules() and (not named.startswith('-')))
+    return named in ('design', 'resume') or (bool(named) and named not in COMMANDS and named not in COMMAND_MODULES and named not in package_modules() and (not named.startswith('-')))
 
 def design_gpu_note() -> str:
     from bindcraft.design_workers import visible_design_gpus

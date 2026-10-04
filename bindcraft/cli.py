@@ -9,7 +9,7 @@ from pathlib import Path
 from bindcraft import OPERATOR_COMPILATION_CACHE, command_modules, package_modules
 from bindcraft.model_weights import missing_model_weights, model_weights
 
-COMMANDS = ('design', 'archive', 'unarchive', 'fetch-weights')
+COMMANDS = ('design', 'pause', 'resume', 'archive', 'unarchive', 'fetch-weights')
 COMMAND_MODULES = {'filter': 'campaign_filter'}
 CAMPAIGN_PRESETS = Path(__file__).parent.parent / 'settings'
 USAGE = '\n'.join(('usage: bindcraft design <settings.json> [--core NAME] [--modality NAME[,NAME]] [--humanize ...] [--metadata <metadata.json>] [--set KEY=VALUE]...',
@@ -17,6 +17,7 @@ USAGE = '\n'.join(('usage: bindcraft design <settings.json> [--core NAME] [--mod
                    '       bindcraft score <design.cif> [--binder CHAINS] [--target CHAINS] [--hotspots SPANS]',
                    '       bindcraft rank <campaign folder> [--on METRIC] [--list]',
                    '       bindcraft filter <campaign folder> [--where METRIC>=VALUE]... [--filters FILE] [--list]',
+                   '       bindcraft pause|resume <campaign folder>',
                    '       bindcraft campaign_output [<campaign folder> ...]',
                    '       bindcraft archive|unarchive <campaign folder>',
                    '       bindcraft fetch-weights'))
@@ -27,7 +28,9 @@ def module_command(command: str):
         return None
     return getattr(importlib.import_module(f'bindcraft.{module}'), 'main', None)
 
-COMMAND_PURPOSE = {'archive': 'Pack every trajectory folder of a finished campaign into one archive each, which is what makes it quick to copy.',
+COMMAND_PURPOSE = {'pause': 'Stop a running campaign once every worker finishes the trajectory it is on, so no design is thrown away. Ctrl+C in the terminal running the campaign asks for the same pause, and interrupting a second time drops the trajectory in flight.',
+                   'resume': 'Carry a paused campaign on from the settings it was started with, claiming the next trajectory after the ones already recorded.',
+                   'archive':'Pack every trajectory folder of a finished campaign into one archive each, which is what makes it quick to copy.',
                    'unarchive': 'Unpack the trajectory archives of a campaign, so the rounds inside them can be read again.',
                    'fetch-weights': 'Put both checkpoint sets on this machine now, for a compute node whose network reaches nothing.'}
 
@@ -213,6 +216,16 @@ def design(settings_path: str, assignments: list[str]=(), metadata_path: str | N
     if status:
         raise SystemExit(status)
 
+def pause_or_resume_campaign(command: str, project_folder: str) -> None:
+    from bindcraft.campaign_control import pause_campaign, resume_campaign
+    try:
+        status = (pause_campaign if command == 'pause' else resume_campaign)(project_folder)
+    except (ValueError, OSError) as refusal:
+        print(f'campaign {command} refused:\n{refusal}', file=sys.stderr)
+        raise SystemExit(2)
+    if status:
+        raise SystemExit(status)
+
 def archive_trajectories(command: str, project_folder: str) -> None:
     from bindcraft.campaign_output import archive_campaign_trajectories, restore_campaign_trajectories
     packed = (archive_campaign_trajectories if command == 'archive' else restore_campaign_trajectories)(project_folder)
@@ -254,6 +267,8 @@ def main(arguments: list[str] | None=None) -> None:
         settings_paths, metadata_path = split_metadata_file(settings_paths)
         if len(settings_paths) == 1 and metadata_path != '':
             return design(settings_paths[0], preset_assignments + assignments, metadata_path)
+    if command in ('pause', 'resume') and len(rest) == 1:
+        return pause_or_resume_campaign(command, rest[0])
     if command in ('archive', 'unarchive') and len(rest) == 1:
         return archive_trajectories(command, rest[0])
     if command == 'fetch-weights' and (not rest):

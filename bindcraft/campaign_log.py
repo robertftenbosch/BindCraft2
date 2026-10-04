@@ -208,6 +208,19 @@ def campaign_closed(accepted_design_count: int, trajectory_count: int, metric: s
     plural = 'y' if trajectory_count == 1 else 'ies'
     return f'\ncampaign done: {accepted_design_count} accepted design(s) after {trajectory_count} trajector{plural}, ranked by {metric}'
 
+def campaign_pause_asked(project_folder: str) -> str:
+    return f'pause asked of {project_folder}: every worker stops after the trajectory it is on, so nothing designed is thrown away. Interrupt again to drop that trajectory and stop now. Carry on with: bindcraft resume {project_folder}'
+
+def campaign_pause_honoured(worker_label: str='') -> str:
+    return f'pausing: no further trajectory claimed{worker_label}'
+
+def campaign_pause_closed(project_folder: str, accepted_design_count: int, trajectory_count: int) -> str:
+    plural = 'y' if trajectory_count == 1 else 'ies'
+    return f'\ncampaign paused: {accepted_design_count} accepted design(s) after {trajectory_count} trajector{plural}. Carry on with: bindcraft resume {project_folder}'
+
+def campaign_resumed(project_folder: str, settings_path: str) -> str:
+    return f'resuming {project_folder} from {settings_path}'
+
 def campaign_feature_notes(settings: dict) -> tuple[str, ...]:
     from bindcraft.settings import requested_campaign_features
     return tuple(feature.note(settings) for feature in requested_campaign_features(settings) if feature.note is not None)

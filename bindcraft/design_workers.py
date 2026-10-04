@@ -187,10 +187,14 @@ def relay_worker_output(stream, log_file, console: TrajectoryOrderedConsole, wor
         console.hand_over(worker_index, trajectory_number, ''.join(block), None)
 
 def report_campaign_close(project_folders: tuple[str, ...], requested_designs: int=0, max_trajectories: int | None=None) -> None:
-    from bindcraft.campaign_log import campaign_budget_exhausted, campaign_closed
+    from bindcraft.campaign_control import campaign_pause_requested
+    from bindcraft.campaign_log import campaign_budget_exhausted, campaign_closed, campaign_pause_closed
     from bindcraft.campaign_output import CampaignProgress, RANKING_METRIC
     for project_folder in project_folders:
         accepted_design_count, trajectory_count = CampaignProgress(project_folder, 0).campaign_status()
+        if campaign_pause_requested(project_folder):
+            print(campaign_pause_closed(project_folder, accepted_design_count, trajectory_count), flush=True)
+            continue
         if requested_designs and accepted_design_count < requested_designs and max_trajectories and trajectory_count >= max_trajectories:
             print('\n' + campaign_budget_exhausted(max_trajectories, trajectory_count, accepted_design_count, requested_designs), flush=True)
         print(campaign_closed(accepted_design_count, trajectory_count, RANKING_METRIC), flush=True)

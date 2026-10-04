@@ -186,6 +186,15 @@ bindcraft design examples/pdl1.json
 
 Repeat any additional flags used to start that run. Add `--set 'resume=false'` to refuse a non-empty folder instead. See [campaign records](docs/source/reference.md#resolved-settings-and-reproducibility) for reproducibility and optional author or project metadata.
 
+To stop a campaign that is running, ask it to pause. Every worker finishes the trajectory it is designing, records it, and then shuts down, so a pause costs no GPU time already spent:
+
+```bash
+bindcraft pause results/pdl1
+bindcraft resume results/pdl1
+```
+
+`Ctrl+C` in the terminal running the campaign asks for the same pause, which is what to use rather than killing it: interrupting a second time gives up on the trajectory in flight. `bindcraft resume` reads the settings the campaign recorded, so neither the settings file nor the flags have to be typed again.
+
 ## Read your results
 
 Start with `results/pdl1/3_Ranked/!_Ranked.csv`, then inspect the structures beside it. The three result folders follow the design process:

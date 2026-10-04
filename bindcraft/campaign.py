@@ -4,7 +4,8 @@ import time
 import jax
 from bindcraft.af2 import AlphaFoldDesignModel, MONOMER_POOL, MULTIMER_POOL, campaign_length_bucket, padded_prediction_length
 from bindcraft.campaign_output import trajectory_output_path, CampaignProgress, DEFAULT_PROJECT_FOLDER, RANKING_METRIC, RANK_STAGE, REFOLD_STAGE, TRAJECTORY_STAGE, accepted_state_suffixes, append_accepted_design, append_campaign_metrics, archive_trajectory_folder, designed_span_stamp, discard_trajectory_structures, drawn_weight_stamp, model_score_stamp, rank_accepted_designs, reprediction_facts, structure_metadata, stage_folder, stage_table, target_ordered_row, timing_stamp, weighted_target_order, write_campaign_metadata, write_campaign_summary
-from bindcraft.campaign_log import binder_optimization, campaign_budget_exhausted, campaign_closed, campaign_header, campaign_label, design_worker_index, speaks_for_the_campaign, trajectory_already_designed, trajectory_design_label, trajectory_header
+from bindcraft.campaign_control import campaign_pause_requested, clear_campaign_pause, pause_on_interrupt
+from bindcraft.campaign_log import binder_optimization, campaign_budget_exhausted, campaign_closed, campaign_header, campaign_label, campaign_pause_closed, campaign_pause_honoured, design_worker_index, speaks_for_the_campaign, trajectory_already_designed, trajectory_design_label, trajectory_header
 from bindcraft.design_identity import design_hash, design_name
 from bindcraft.parameter_sweep import arm_trajectory_budget, autotuned_settings, autotuned_stamp, parameter_sweep_arms, parameter_sweep_options, sweep_block_budgets, write_sweep_record
 from bindcraft.MPNN_stage import redesign_and_validate_binders
@@ -131,8 +132,10 @@ def write_trajectory_design(design_settings, protein_states, predictions, trajec
                         metadata=structure_metadata(campaign_label(design_settings.settings), prediction.metrics, design_settings, state=state, stage='trajectory'),
                         residue_metrics=residue_confidence_tracks(predictions, state), receptor_chains=receptor_chains)
 
-def run_campaign_arm(settings: dict, project_folder: str, alphafold_model, validation_model, mpnn_model, key: jax.Array, max_trajectories: int | None, build_validation_model, autotune: bool=True, closing: bool=True, metadata: dict[str, str] | None=None) -> int:
+def run_campaign_arm(settings: dict, project_folder: str, alphafold_model, validation_model, mpnn_model, key: jax.Array, max_trajectories: int | None, build_validation_model, autotune: bool=True, closing: bool=True, metadata: dict[str, str] | None=None, pause_folder: str | None=None) -> int:
     requested_designs = int(settings.get('number_of_final_designs', 1))
+    pause_folder = project_folder if pause_folder is None else pause_folder  #a sweep asks its arms to read the pause held by the campaign above them
+    paused = False
     design_settings = build_design_settings(settings)
     target_chain_prefix = design_settings.target_chain_prefix
     receptor_chains = receptor_chain_layouts(design_settings)
@@ -150,6 +153,10 @@ def run_campaign_arm(settings: dict, project_folder: str, alphafold_model, valid
     if mpnn_model is None and speaks_for_the_campaign():
         print(f'trajectory-only: no ProteinMPNN redesign, no design will be accepted; stopping at max_trajectories={max_trajectories}', flush=True)
     while True:
+        if campaign_pause_requested(pause_folder):
+            print(campaign_pause_honoured(worker_label), flush=True)
+            paused = True
+            break
         claimed = campaign_progress.claim_trajectory()
         if claimed is None:
             break
@@ -227,12 +234,12 @@ def run_campaign_arm(settings: dict, project_folder: str, alphafold_model, valid
         if settings.get('archive_trajectories'):
             archive_trajectory_folder(trajectory_directory)
     accepted_design_count, trajectory_count = campaign_progress.campaign_status()
-    if closing and design_worker_index() is None and accepted_design_count < requested_designs and max_trajectories and trajectory_count >= max_trajectories:
+    if closing and design_worker_index() is None and (not paused) and accepted_design_count < requested_designs and max_trajectories and trajectory_count >= max_trajectories:
         print('\n' + campaign_budget_exhausted(max_trajectories, trajectory_count, accepted_design_count, requested_designs), flush=True)
     write_campaign_summary(project_folder)
     rank_accepted_designs(project_folder)
     if design_worker_index() is None and closing:
-        print(campaign_closed(accepted_design_count, trajectory_count, RANKING_METRIC), flush=True)
+        print(campaign_pause_closed(pause_folder, accepted_design_count, trajectory_count) if paused else campaign_closed(accepted_design_count, trajectory_count, RANKING_METRIC), flush=True)
     return trajectory_count
 
 def print_campaign_header(settings: dict, project_folder: str, design_settings) -> None:
@@ -272,10 +279,12 @@ def run_campaign(settings: dict, project_folder: str, af2_weights: str | None=No
     arm_trajectories = arm_trajectory_budget(max_trajectories, len(arms))
     reached = {}
     for budget in sweep_block_budgets(arm_trajectories, int(parameter_sweep_options(settings)['block_trajectories'])):
+        if campaign_pause_requested(project_folder):
+            break
         for arm, overrides in arms:
             arm_settings = {**settings, 'number_of_final_designs': arm_trajectories * int(settings.get('kept_sequences', DEFAULT_SETTINGS['kept_sequences'])), **overrides}
             print(f"\n=== sweep arm {arm} | {overrides or 'campaign settings'} | through trajectory {budget} of {arm_trajectories} ===", flush=True)
-            reached[arm] = run_campaign_arm(arm_settings, os.path.join(project_folder, arm), alphafold_model, validation_model, mpnn_model, key, budget, build_validation_model, autotune=False, closing=False, metadata=metadata)
+            reached[arm] = run_campaign_arm(arm_settings, os.path.join(project_folder, arm), alphafold_model, validation_model, mpnn_model, key, budget, build_validation_model, autotune=False, closing=False, metadata=metadata, pause_folder=project_folder)
         if speaks_for_the_campaign():
             print(f'sweep record: {write_sweep_record(project_folder, design_settings, arms)}', flush=True)
     return sum(reached.values())
@@ -284,6 +293,9 @@ def launch_campaign(settings_path: str, setting_overrides: list[str] | tuple[str
     settings = cleaned_campaign_settings(read_settings(settings_path, parse_setting_overrides(setting_overrides)))
     metadata = {**settings_provenance(settings, tuple(setting_overrides)), **(read_campaign_metadata(metadata_path) or {})}
     project_folder = settings.get('project_folder', DEFAULT_PROJECT_FOLDER)
+    if not running_as_design_worker():
+        clear_campaign_pause(project_folder)  #a campaign started here is not the one that was paused here
+    pause_on_interrupt(project_folder)
     if af2_weights is None or mpnn_weights is None:
         resolved_af2_weights, resolved_mpnn_weights = model_weights()
         af2_weights = resolved_af2_weights if af2_weights is None else af2_weights
